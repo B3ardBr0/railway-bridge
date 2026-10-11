@@ -25,7 +25,6 @@ import re
 import sys
 import threading
 import time
-import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -294,7 +293,9 @@ class Poller:
         while True:
             try:
                 self.poll_once()
-            except (urllib.error.URLError, RuntimeError, KeyError, ValueError, TimeoutError) as error:
+            # Anything, not a list: urlopen lets a dropped connection through as
+            # RemoteDisconnected, and one uncaught error would end polling for good.
+            except Exception as error:  # noqa: BLE001
                 with self.lock:
                     self.state["up"] = 0
                     self.last_error = str(error)[:300]

@@ -65,6 +65,8 @@ scrape_configs:
 
 Railway has no read-only token. A project token can also deploy, and read any of the environment's variables that aren't sealed. Keep it somewhere only the bridge can read, and seal your service's secrets in Railway so the token can't see them.
 
+`/prometheus` and `/health` have no authentication, like most exporters. They show your request counts and recent deploy messages, so keep the port on your LAN or behind your firewall, not on the internet.
+
 ## Tests
 
 ```sh

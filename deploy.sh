@@ -60,7 +60,7 @@ ctl="/tmp/railwaydeploy-$$.sock"
 ssh_opts=(-o ControlMaster=auto -o ControlPath="$ctl" -o ControlPersist=300)
 trap 'rm -f "$local_env"; ssh -O exit "${ssh_opts[@]}" "$HOST" 2>/dev/null || true' EXIT
 
-ssh "${ssh_opts[@]}" "$HOST" "umask 077 && mkdir -p '$STAGE'"
+ssh "${ssh_opts[@]}" "$HOST" "umask 077 && mkdir '$STAGE'"
 scp "${ssh_opts[@]}" -q "$here/railway_bridge.py" "$HOST:$STAGE/"
 scp "${ssh_opts[@]}" -q "$local_env" "$HOST:$STAGE/railway-bridge.env"
 
