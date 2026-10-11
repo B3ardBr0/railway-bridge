@@ -8,8 +8,9 @@ This fills it. It polls Railway's public GraphQL API every five minutes with a p
 
 ## What you get
 
+This is the exporter's own output for the state the tests use, trimmed:
+
 ```
-$ curl -s localhost:8098/prometheus
 railway_bridge_up{service="web"} 1
 railway_http_requests_total{class="2xx",service="web"} 10
 railway_http_requests_total{class="5xx",service="web"} 0
@@ -21,7 +22,7 @@ railway_deployment_created_timestamp_seconds{change="Reports",id="d2",service="w
 ...
 ```
 
-That's trimmed. The full set:
+The full set:
 
 - **Requests by status class** (`2xx` to `5xx`), as a real counter, so `increase()` and `rate()` work.
 - **Latency** at p50, p90, p95 and p99.
