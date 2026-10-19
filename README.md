@@ -40,11 +40,21 @@ So `RequestCounter` remembers the last bucket it took per status code, only take
 ## Running it
 
 ```sh
-cp railway-bridge.env.example railway-bridge.env   # fill in the token and IDs
-docker run -d --name railway-bridge --restart unless-stopped -p 8098:8098 \
+install -m 600 railway-bridge.env.example railway-bridge.env   # then fill in the token and IDs
+docker run -d --name railway-bridge --restart unless-stopped -p 127.0.0.1:8098:8098 \
   --env-file railway-bridge.env -v "$PWD/railway_bridge.py:/app/railway_bridge.py:ro" \
-  python:3.12-alpine python /app/railway_bridge.py
+  python:3.12.15-alpine3.24@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4 \
+  python /app/railway_bridge.py
 ```
+
+Or use the included Compose file, which pins the runtime and applies a read-only filesystem, dropped capabilities and a container healthcheck:
+
+```sh
+install -m 600 railway-bridge.env.example railway-bridge.env   # then fill in the token and IDs
+docker compose up -d
+```
+
+Both examples bind the exporter to loopback because its endpoints are unauthenticated. If Prometheus runs on another host, publish it only on a private address protected by the host firewall. The Compose deployment fixes the application port at 8098 so its mapping and healthcheck stay consistent.
 
 Or without Docker: `set -a; . ./railway-bridge.env; set +a; python3 railway_bridge.py`.
 

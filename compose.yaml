@@ -1,0 +1,46 @@
+# railway-bridge as a Compose project. Put this file, railway_bridge.py and a
+# filled-in railway-bridge.env (mode 600, see railway-bridge.env.example) in one
+# directory, then:
+#
+#   docker compose up -d
+#
+# Docker reads the env file when the container is created, so after changing it
+# run `docker compose up -d --force-recreate`; a plain restart keeps the old values.
+
+services:
+  railway-bridge:
+    # Pinned so a pull never changes the runtime underneath.
+    image: python:3.12.15-alpine3.24@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+    container_name: railway-bridge
+    restart: unless-stopped
+    command: ["python", "-B", "/app/railway_bridge.py"]
+    env_file: railway-bridge.env
+    environment:
+      # The Compose deployment deliberately fixes one internal port so the
+      # published port and healthcheck cannot disagree with the application.
+      BRIDGE_PORT: "8098"
+    ports:
+      # Exporter output includes traffic counts and recent deploy messages.
+      # Keep it on this host unless an explicit firewall rule protects it.
+      - "127.0.0.1:8098:8098"
+    volumes:
+      - ./railway_bridge.py:/app/railway_bridge.py:ro
+    # It only reads its environment and talks HTTP, so it needs no root or
+    # capabilities. The root filesystem is read-only; only ephemeral /tmp is
+    # writable.
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8098/health', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
