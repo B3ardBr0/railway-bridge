@@ -2,7 +2,7 @@
 """railway-bridge - Railway's service metrics as Prometheus metrics.
 
 Polls Railway's public GraphQL API for one service and serves what it learns
-at /prometheus for HarbourMaster's Prometheus to scrape. Standard library only.
+at /prometheus for Prometheus to scrape. Standard library only.
 
 Configuration comes from the environment:
 
@@ -194,7 +194,7 @@ class Railway:
         request = urllib.request.Request(
             API_URL, data=json.dumps({"query": text, "variables": variables}).encode(), method="POST",
             headers={"Project-Access-Token": self.token, "Content-Type": "application/json",
-                     "User-Agent": "harbourmaster-railway-bridge"})
+                     "User-Agent": "railway-bridge"})
         with urllib.request.urlopen(request, timeout=30) as response:
             body = json.load(response)
         if body.get("errors"):

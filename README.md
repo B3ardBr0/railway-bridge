@@ -47,14 +47,14 @@ docker run -d --name railway-bridge --restart unless-stopped -p 127.0.0.1:8098:8
   python /app/railway_bridge.py
 ```
 
-Or use the included Compose file, which pins the runtime and applies a read-only filesystem, dropped capabilities and a container healthcheck:
+Or use the included Compose file, which pins the runtime and applies a read-only filesystem, dropped capabilities and a container healthcheck. It refuses to start until you name the address to listen on:
 
 ```sh
 install -m 600 railway-bridge.env.example railway-bridge.env   # then fill in the token and IDs
-docker compose up -d
+RAILWAY_BRIDGE_BIND_IP=127.0.0.1 docker compose up -d
 ```
 
-Both examples bind the exporter to loopback because its endpoints are unauthenticated. If Prometheus runs on another host, publish it only on a private address protected by the host firewall. The Compose deployment fixes the application port at 8098 so its mapping and healthcheck stay consistent.
+Both examples bind the exporter to loopback because its endpoints are unauthenticated. If Prometheus runs on another host, publish it only on a private address protected by the host firewall, never `0.0.0.0`. The Compose deployment fixes the application port at 8098 so its mapping and healthcheck stay consistent.
 
 Or without Docker: `set -a; . ./railway-bridge.env; set +a; python3 railway_bridge.py`.
 
@@ -70,7 +70,45 @@ scrape_configs:
       - targets: ["localhost:8098"]
 ```
 
-`deploy.sh` is how I put it on my homelab board: it reads the settings from a local secrets file, copies them over ssh in a file only the owner can read, and recreates the container. You'll want to change the paths if you use it.
+## Deploying it to another host
+
+`deploy.sh` is how I put it on a Docker host in my homelab. It is opinionated, and you'll want to read it and `remote/install.sh` before using it. It needs SSH with sudo on the target, Docker Compose, systemd and `flock` there, and a local settings file, by default `~/.config/railway-bridge/deploy.env`, mode 600. `render.py` lists what goes in it: the SSH target, optionally the host name the target must answer with, the private address and interface to bind to, and the Railway token and IDs.
+
+Run the tests first, as their own step. `deploy.sh` never runs them: a deploy script that runs the tests, while the tests run the deploy script, recurses until the machine runs out of memory.
+
+```sh
+python3 -m unittest discover -s tests
+./deploy.sh            # install-only: stage, check, pull and publish; nothing restarts
+./deploy.sh --start    # the same, then recreate the container and wait for it to be healthy
+```
+
+What it does on the host:
+
+- The settings are rendered locally into a private temporary directory with a SHA-256 manifest, and travel over SSH's stdin, never in a command line. The installer is not uploaded; it is sent inside the SSH command and run with `sudo /bin/bash -s`.
+- As root it copies the stage into a new root-only release under `/opt/railway-bridge-releases`, checks every file against the manifest, checks the env files hold exactly what the container and the bind address need, and has Compose confirm the only service and the pinned image digest.
+- It installs and enables `railway-bridge-reconcile.service`, which after a reboot waits for the private address to exist before recreating the container, so Docker never binds to an address that isn't there yet. Check it with `systemctl status railway-bridge-reconcile.service`.
+- It points `/opt/railway-bridge` at the new release with one atomic rename.
+
+An install-only run changes nothing that is serving. With `--start`, a release that does not come up healthy is a rollback: `/opt/railway-bridge` is pointed back at the previous release and that is recreated. On a first install the failed project is taken down instead. The failed release is kept as `<name>.failed`. A failure or Ctrl-C before that point puts the link, the container and the systemd unit back as they were. Every release, `.failed` ones included, keeps its own copy of the token; list them with `sudo ls -l /opt/railway-bridge-releases` and remove the ones you no longer need, and a `.failed` one once you have looked at why it failed.
+
+The remote side expects the SSH user's login shell to be POSIX (bash, dash or similar), and the host needs `python3` for the installer's port check.
+
+Then verify from a machine that can reach the bind address:
+
+```sh
+curl -s http://<bind address>:8098/health
+curl -s http://<bind address>:8098/prometheus | grep -c '^railway_'
+```
+
+### Moving it between hosts
+
+When the bridge moves from one host to another, I treat each step as a migration gate and do not start the next until the last one is verified:
+
+1. Record the before-state on the old host: health, the metric count, and a Grafana screenshot.
+2. Run the install-only deploy on the new host, then `--start`, and verify health and metrics there.
+3. Point Prometheus's scrape target and the Uptime Kuma monitor at the new address, and confirm both see it.
+4. Reboot the new host and confirm the container comes back on its own, through the reconcile service.
+5. Only then stop the source container on the old host. Keep it and its files for rollback until the new one has run cleanly for a while; starting the old one again is the way back.
 
 ## About the token
 

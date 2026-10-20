@@ -1,11 +1,15 @@
-# railway-bridge as a Compose project. Put this file, railway_bridge.py and a
-# filled-in railway-bridge.env (mode 600, see railway-bridge.env.example) in one
-# directory, then:
+# railway-bridge as a Compose project. deploy.sh renders this file,
+# railway_bridge.py, railway-bridge.env (what the container reads) and
+# deployment.env (the bind address) into one release directory. By hand:
 #
-#   docker compose up -d
+#   docker compose --env-file deployment.env up -d
 #
 # Docker reads the env file when the container is created, so after changing it
-# run `docker compose up -d --force-recreate`; a plain restart keeps the old values.
+# run `up -d --force-recreate`; a plain restart keeps the old values.
+
+# One project name for every release directory, so a new release recreates the
+# same container instead of starting a second project beside it.
+name: railway-bridge
 
 services:
   railway-bridge:
@@ -14,15 +18,19 @@ services:
     container_name: railway-bridge
     restart: unless-stopped
     command: ["python", "-B", "/app/railway_bridge.py"]
-    env_file: railway-bridge.env
+    env_file:
+      # raw: values are taken byte for byte, never interpolated or unquoted.
+      - path: railway-bridge.env
+        format: raw
     environment:
       # The Compose deployment deliberately fixes one internal port so the
       # published port and healthcheck cannot disagree with the application.
       BRIDGE_PORT: "8098"
     ports:
-      # Exporter output includes traffic counts and recent deploy messages.
-      # Keep it on this host unless an explicit firewall rule protects it.
-      - "127.0.0.1:8098:8098"
+      # Exporter output includes traffic counts and recent deploy messages and
+      # has no authentication. It listens only on one private address, never
+      # on every interface; deployment.env names it.
+      - "${RAILWAY_BRIDGE_BIND_IP:?set in deployment.env}:8098:8098"
     volumes:
       - ./railway_bridge.py:/app/railway_bridge.py:ro
     # It only reads its environment and talks HTTP, so it needs no root or

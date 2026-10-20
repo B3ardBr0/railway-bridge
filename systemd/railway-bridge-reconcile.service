@@ -1,0 +1,19 @@
+[Unit]
+Description=Reconcile railway-bridge after its private address is ready
+Requires=docker.service tailscaled.service
+Wants=network-online.target
+After=docker.service tailscaled.service network-online.target
+# Window: three 1200s attempts + two 15s delays + 270s scheduling margin.
+StartLimitIntervalSec=3900s
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+# Lock wait 600 + address wait 120 + compose wait 300 + 180 overhead.
+TimeoutStartSec=1200s
+Restart=on-failure
+RestartSec=15s
+ExecStart=/usr/local/libexec/railway-bridge-reconcile
+
+[Install]
+WantedBy=multi-user.target
