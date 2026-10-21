@@ -1,7 +1,10 @@
 """Tests for railway-bridge. Standard library only; no network."""
 
 import os
+import signal
+import subprocess
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -172,6 +175,43 @@ class Exposition(unittest.TestCase):
         self.assertIn('railway_bridge_up{service="web"} 1', self.text)
         self.assertIn('railway_bridge_last_success_timestamp_seconds{service="web"} 1791630000', self.text)
 
+
+class Shutdown(unittest.TestCase):
+    """In a container the bridge is PID 1, which ignores SIGTERM unless it
+    installs a handler, so `docker stop` waited 10 s and then killed it (exit
+    137). With the handler it exits at once, with status 0."""
+
+    def test_sigterm_stops_the_bridge_promptly_and_cleanly(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # The poller is replaced with a no-op, so the test makes no network call.
+        harness = (
+            "import sys; sys.path.insert(0, %r); import railway_bridge as rb; "
+            "rb.Poller.run = lambda self: None; rb.main()" % root
+        )
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "RAILWAY_TOKEN": "test", "RAILWAY_PROJECT_ID": "p",
+            "RAILWAY_ENVIRONMENT_ID": "e", "RAILWAY_SERVICE_ID": "s",
+            "BRIDGE_PORT": "0", "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        proc = subprocess.Popen([sys.executable, "-c", harness], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            line = proc.stdout.readline()
+            if "railway-bridge for" not in line:
+                proc.wait(timeout=5)
+                self.fail(f"bridge did not start: {proc.stderr.read()}")
+            started = time.monotonic()
+            proc.send_signal(signal.SIGTERM)
+            code = proc.wait(timeout=5)
+            self.assertEqual(code, 0, proc.stderr.read())
+            self.assertLess(time.monotonic() - started, 2)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            proc.stdout.close()
+            proc.stderr.close()
 
 if __name__ == "__main__":
     unittest.main()

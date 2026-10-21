@@ -22,6 +22,7 @@ the service's secrets in Railway so the token cannot read them.
 import json
 import os
 import re
+import signal
 import sys
 import threading
 import time
@@ -338,6 +339,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     global POLLER
+    # As a container's PID 1 the bridge ignores SIGTERM unless it handles it,
+    # so `docker stop` would wait 10 s and then kill it. Exit at once instead.
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
     missing = [n for n in ("RAILWAY_TOKEN", "RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_ID", "RAILWAY_SERVICE_ID")
                if not os.environ.get(n)]
     if missing:
@@ -346,7 +350,10 @@ def main() -> None:
     threading.Thread(target=POLLER.run, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", BRIDGE_PORT), Handler)
     print(f"railway-bridge for {SERVICE_LABEL} on 0.0.0.0:{BRIDGE_PORT}, polling every {POLL_SECONDS}s", flush=True)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
